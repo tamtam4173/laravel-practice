@@ -12,7 +12,7 @@ use Illuminate\View\View;
 class ProfileController extends Controller
 {
     /**
-     * Display the user's profile form.
+     * プロフィール編集画面
      */
     public function edit(Request $request): View
     {
@@ -22,23 +22,44 @@ class ProfileController extends Controller
     }
 
     /**
-     * Update the user's profile information.
+     * プロフィール更新
+     *
+     * - 更新可能項目を user_name / email に限定
+     * - email 変更時は email_verified_at をリセット
+     * - ProfileUpdateRequest に user_name ルールが無くてもここで補完
      */
     public function update(ProfileUpdateRequest $request): RedirectResponse
     {
-        $request->user()->fill($request->validated());
+        // 既存のバリデーション結果（通常は email 等）
+        $data = $request->validated();
 
-        if ($request->user()->isDirty('email')) {
-            $request->user()->email_verified_at = null;
+        // user_name が送られていれば軽いバリデーションを追加（任意文字列255まで）
+        if ($request->has('user_name')) {
+            $request->validate([
+                'user_name' => ['nullable', 'string', 'max:255'],
+            ]);
+            $data['user_name'] = $request->input('user_name');
         }
 
-        $request->user()->save();
+        // 許可フィールドのみ反映（想定外のキーを排除）
+        $allowKeys = ['user_name', 'email'];
+        $filtered = array_intersect_key($data, array_flip($allowKeys));
+
+        $user = $request->user();
+        $user->fill($filtered);
+
+        // email が変わったら認証フラグをリセット
+        if ($user->isDirty('email')) {
+            $user->email_verified_at = null;
+        }
+
+        $user->save();
 
         return Redirect::route('profile.edit')->with('status', 'profile-updated');
     }
 
     /**
-     * Delete the user's account.
+     * アカウント削除
      */
     public function destroy(Request $request): RedirectResponse
     {

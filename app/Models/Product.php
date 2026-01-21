@@ -16,15 +16,11 @@ class Product extends Model
         'stock',
         'comment',
         'img_path',
+        'maker',        
     ];
 
     public function company()
     {
         return $this->belongsTo(Company::class);
-    }
-
-    public function sales()
-    {
-        return $this->hasMany(Sale::class);
     }
 }

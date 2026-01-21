@@ -2,21 +2,15 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Company extends Model
 {
-    use HasFactory;
+    protected $fillable = ['company_name','street_address','representative_name'];
 
-    protected $fillable = [
-        'company_name',
-        'street_address',
-        'representative_name',
-    ];
-
-    public function products()
+   
+    public static function forSelect()
     {
-        return $this->hasMany(Product::class);
+        return static::orderBy('company_name')->pluck('company_name', 'id');
     }
 }

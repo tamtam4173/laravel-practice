@@ -24,7 +24,7 @@
 
         <tr>
             <td><strong>商品名</strong></td>
-            <td>{{ $product->name }}</td>
+            <td>{{ $product->product_name }}</td>
         </tr>
 
         <tr>

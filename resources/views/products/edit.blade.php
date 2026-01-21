@@ -4,9 +4,20 @@
 <div style="max-width: 600px; margin: 40px auto;">
     <h2 style="font-size: 20px; margin-bottom: 20px;">商品情報編集画面</h2>
 
+    {{-- バリデーションエラー表示（任意） --}}
+    @if ($errors->any())
+        <div style="margin-bottom:12px;color:#b91c1c;">
+            <ul style="margin:0;padding-left:18px;">
+                @foreach ($errors->all() as $e)
+                    <li>{{ $e }}</li>
+                @endforeach
+            </ul>
+        </div>
+    @endif
+
     <form method="POST" action="{{ route('products.update', $product) }}" enctype="multipart/form-data" style="border: 1px solid #333; padding: 30px;">
         @csrf
-        @method('PATCH') {{-- PATCHに修正 --}}
+        @method('PATCH')
 
         <table style="width: 100%;">
             <tr>
@@ -14,21 +25,26 @@
                 <td>{{ $product->id }}</td>
             </tr>
 
+            {{-- 商品名（DBは product_name） --}}
             <tr>
                 <th style="text-align: left;">商品名 <span style="color:red">*</span></th>
                 <td>
-                    <input type="text" name="name" value="{{ old('name', $product->name) }}" required style="width: 100%; padding: 5px;">
+                    {{-- 画面のnameは従来どおり name のままでOK（コントローラで正規化） --}}
+                    <input type="text" name="name" value="{{ old('name', $product->product_name) }}" required style="width: 100%; padding: 5px;">
                 </td>
             </tr>
 
+            {{-- メーカー名＝会社選択（DBは company_id）。編集ではDBの会社一覧から選択 --}}
             <tr>
                 <th style="text-align: left;">メーカー名 <span style="color:red">*</span></th>
                 <td>
-                    <select name="maker" required style="width: 100%; padding: 5px;">
+                    <select name="company_id" required style="width: 100%; padding: 5px;">
                         <option value="">選択してください</option>
-                        <option value="Coca-Cola" {{ old('maker', $product->maker) == 'Coca-Cola' ? 'selected' : '' }}>Coca-Cola</option>
-                        <option value="サントリー" {{ old('maker', $product->maker) == 'サントリー' ? 'selected' : '' }}>サントリー</option>
-                        <option value="キリン" {{ old('maker', $product->maker) == 'キリン' ? 'selected' : '' }}>キリン</option>
+                        @foreach ($companies as $id => $name)
+                            <option value="{{ $id }}" {{ (string)old('company_id', $product->company_id) === (string)$id ? 'selected' : '' }}>
+                                {{ $name }}
+                            </option>
+                        @endforeach
                     </select>
                 </td>
             </tr>
@@ -54,13 +70,14 @@
                 </td>
             </tr>
 
+            {{-- 画像（DBは img_path を想定） --}}
             <tr>
                 <th style="text-align: left;">商品画像</th>
                 <td>
-                    <input type="file" name="image_path">
-                    @if ($product->image_path)
+                    <input type="file" name="image">
+                    @if ($product->img_path)
                         <div style="margin-top: 8px;">
-                            <img src="{{ asset('storage/' . $product->image_path) }}" width="80">
+                            <img src="{{ asset('storage/' . $product->img_path) }}" width="80">
                         </div>
                     @endif
                 </td>

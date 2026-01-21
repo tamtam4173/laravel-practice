@@ -4,123 +4,144 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Product;
-use Illuminate\Support\Facades\Storage;
+use App\Models\Company;
 
 class ProductController extends Controller
 {
-    /**
-     * 商品一覧表示（検索対応）
-     */
+    /** 商品一覧（検索：商品名/会社） */
     public function index(Request $request)
     {
-        $query = Product::query();
+        $query = Product::with('company');
 
         if ($request->filled('keyword')) {
-            $query->where('name', 'like', '%' . $request->keyword . '%');
+            $query->where('product_name', 'like', '%' . $request->keyword . '%');
+        }
+        if ($request->filled('company_id')) {
+            $query->where('company_id', $request->company_id);
         }
 
-        if ($request->filled('maker')) {
-            $query->where('maker', $request->maker);
-        }
+        $products  = $query->paginate(10);
+        // 検索用プルダウン（DBから）
+        $companies = Company::orderBy('company_name')->pluck('company_name', 'id');
 
-        $products = $query->paginate(10);
-
-        return view('products.index', compact('products'));
+        return view('products.index', compact('products', 'companies'));
     }
 
-    /**
-     * 新規登録フォーム表示
-     */
+    /** 新規登録フォーム（3社を固定表示。未登録なら自動作成） */
     public function create()
     {
-        return view('products.create');
-    }
-
-    /**
-     * 商品登録処理（DB保存付き）
-     */
-    public function store(Request $request)
-    {
-        $validated = $request->validate([
-            'name'        => 'required|string|max:255',
-            'price'       => 'required|integer|min:0',
-            'stock'       => 'required|integer|min:0',
-            'maker'       => 'required|string|max:255',
-            'comment'     => 'nullable|string|max:1000',
-            'image_path'  => 'nullable|image|max:2048',
-        ]);
-
-        // 画像アップロード処理
-        if ($request->hasFile('image_path')) {
-            $validated['image_path'] = $request->file('image_path')->store('products', 'public');
+        $fixed = ['Coca-Cola', 'サントリー', 'キリン'];
+        foreach ($fixed as $nm) {
+            Company::firstOrCreate(['company_name' => $nm]);
         }
 
-        Product::create($validated);
+        $companies = Company::whereIn('company_name', $fixed)
+            ->orderByRaw("FIELD(company_name, 'Coca-Cola','サントリー','キリン')")
+            ->pluck('company_name', 'id');
 
-        return redirect()->route('products.index')
-                         ->with('success', '商品を登録しました');
+        return view('products.create', compact('companies'));
     }
 
-    /**
-     * 商品詳細表示
-     */
+    /** 商品登録 */
+    public function store(Request $request)
+    {
+        // 画面の name（name / product_name 両対応）
+        $rawName      = $request->input('product_name', $request->input('name'));
+        $rawCompanyId = $request->input('company_id');
+        $rawMakerText = $request->input('maker'); // 旧画面から会社名文字列が来た場合の保険
+
+        if (!$rawCompanyId && $rawMakerText) {
+            $rawCompanyId = Company::where('company_name', $rawMakerText)->value('id');
+        }
+
+        $validated = $request->validate([
+            'price'   => ['required','integer','min:0'],
+            'stock'   => ['required','integer','min:0'],
+            'comment' => ['nullable','string'],
+        ], [], [
+            'price'   => '価格',
+            'stock'   => '在庫数',
+            'comment' => 'コメント',
+        ]);
+
+        if (empty($rawCompanyId)) {
+            return back()->withErrors(['company_id' => '会社名が不正です（DBに存在する会社名を選択してください）'])->withInput();
+        }
+        if (empty($rawName)) {
+            return back()->withErrors(['product_name' => '商品名は必須です'])->withInput();
+        }
+
+        // maker カラムが NOT NULL のため会社名を同時保存
+        $companyName = Company::where('id', $rawCompanyId)->value('company_name');
+
+        Product::create([
+            'company_id'   => (int)$rawCompanyId,
+            'product_name' => $rawName,
+            'price'        => (int)$validated['price'],
+            'stock'        => (int)$validated['stock'],
+            'comment'      => $validated['comment'] ?? null,
+            'maker'        => $companyName,
+        ]);
+
+        return redirect()->route('products.index')->with('success', '商品を登録しました');
+    }
+
+    /** 詳細 */
     public function show(Product $product)
     {
+        $product->load('company');
         return view('products.show', compact('product'));
     }
 
-    /**
-     * 編集フォーム表示
-     */
+    /** 編集フォーム（会社名はDBの全件） */
     public function edit(Product $product)
     {
-        return view('products.edit', compact('product'));
+        $companies = Company::orderBy('company_name')->pluck('company_name', 'id');
+        return view('products.edit', compact('product', 'companies'));
     }
 
-    /**
-     * 商品更新処理
-     */
+    /** 更新 */
     public function update(Request $request, Product $product)
     {
+        $rawName      = $request->input('product_name', $request->input('name'));
+        $rawCompanyId = $request->input('company_id');
+        $rawMakerText = $request->input('maker');
+
+        if (!$rawCompanyId && $rawMakerText) {
+            $rawCompanyId = Company::where('company_name', $rawMakerText)->value('id');
+        }
+
         $validated = $request->validate([
-            'name'        => 'required|string|max:255',
-            'price'       => 'required|integer|min:0',
-            'stock'       => 'required|integer|min:0',
-            'maker'       => 'required|string|max:255',
-            'comment'     => 'nullable|string|max:1000',
-            'image_path'  => 'nullable|image|max:2048',
+            'price'   => ['required','integer','min:0'],
+            'stock'   => ['required','integer','min:0'],
+            'comment' => ['nullable','string'],
         ]);
 
-        // 画像がアップロードされた場合のみ処理
-        if ($request->hasFile('image_path')) {
-            // 古い画像がある場合は削除
-            if ($product->image_path && Storage::disk('public')->exists($product->image_path)) {
-                Storage::disk('public')->delete($product->image_path);
-            }
-
-            // 新しい画像を保存
-            $validated['image_path'] = $request->file('image_path')->store('products', 'public');
+        if (empty($rawCompanyId)) {
+            return back()->withErrors(['company_id' => '会社名が不正です（DBに存在する会社名を選択してください）'])->withInput();
+        }
+        if (empty($rawName)) {
+            return back()->withErrors(['product_name' => '商品名は必須です'])->withInput();
         }
 
-        $product->update($validated);
+        $companyName = Company::where('id', $rawCompanyId)->value('company_name');
 
-        return redirect()->route('products.show', $product->id)
-                         ->with('success', '商品を更新しました');
+        $product->update([
+            'company_id'   => (int)$rawCompanyId,
+            'product_name' => $rawName,
+            'price'        => (int)$validated['price'],
+            'stock'        => (int)$validated['stock'],
+            'comment'      => $validated['comment'] ?? null,
+            'maker'        => $companyName,
+        ]);
+
+        return redirect()->route('products.show', $product->id)->with('success', '商品を更新しました');
     }
 
-    /**
-     * 商品削除処理
-     */
+    /** 削除 */
     public function destroy(Product $product)
     {
-        // 画像がある場合は削除
-        if ($product->image_path && Storage::disk('public')->exists($product->image_path)) {
-            Storage::disk('public')->delete($product->image_path);
-        }
-
         $product->delete();
-
-        return redirect()->route('products.index')
-                         ->with('success', '商品を削除しました');
+        return redirect()->route('products.index')->with('success', '商品を削除しました');
     }
 }
