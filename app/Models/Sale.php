@@ -9,8 +9,16 @@ class Sale extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['product_id'];
+    /**
+     * 一括代入を許可するカラム
+     */
+    protected $fillable = [
+        'product_id',
+    ];
 
+    /**
+     * 商品とのリレーション
+     */
     public function product()
     {
         return $this->belongsTo(Product::class);
